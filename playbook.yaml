@@ -1,0 +1,6 @@
+- name: nexus3.0 installation
+  hosts: nexus_server
+  remote_user: ec2-user
+  become: true
+  roles:
+    - nexus3

@@ -1,0 +1,111 @@
+---
+# tasks file for nexus3
+  # this is only to get information
+# - name: Print gathered facts
+#   ansible.builtin.debug:
+#     info: "{{ ansible_facts }}"
+
+- name: update Yum Package
+  yum:
+    name: "*"
+    state: latest
+    update_cache: yes
+
+- name: install wget
+  yum:
+    name: wget
+    state: present
+
+- name: Install OpenJDK 1.8 for all RPM-Based systems
+  yum:
+    name: java-1.8.0-openjdk.x86_64
+    state: present
+  when:
+    - ansible_facts['distribution'] != "Amazon"
+
+- name: Install OpenJDK 1.8 for Amazon Ec2 version only
+  yum:
+    name: java-1.8.0-amazon-corretto.x86_64
+    state: present
+  when:
+    - ansible_facts['distribution'] == "Amazon"
+
+- name: Create a directory named app and cd into the directory.
+  file:
+    path: "/app"
+    state: directory
+
+- name: Download the latest nexus.
+  get_url:
+    url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
+    dest : /app
+
+- name: Un-tar the downloaded file.
+  unarchive:
+    src: "/app/nexus-3.68.1-02-unix.tar.gz"
+    dest: /app
+    remote_src: yes
+
+- name : Rename the untared file to nexus.
+  file:
+    src: /app/nexus-3.68.1-02
+    dest: /app/nexus
+    state: link
+    force: yes
+
+- name: create a new user named nexus to run the nexus service.
+  user:
+    name: nexus
+    shell: /sbin/nologin
+    create_home: no
+    comment: "Nexus user to run the nexus service"
+    state: present
+
+- name: Change the ownership of nexus files to nexus user
+  file:
+    path: /app/nexus
+    owner: nexus
+    group: nexus
+
+- name: Change the ownership of nexus data directory to nexus user
+  file:
+    path: /app/sonatype-work
+    owner: nexus
+    group: nexus
+
+- name: Uncomment and set run_as_user parameter
+  lineinfile:
+    path: /app/nexus/bin/nexus.rc
+    regexp: '^#run_as_user=""$'
+    line: 'run_as_user="nexus"'
+    state: present
+    create: yes # Used with state=present. If specified, the file will be created if it does not already exist.
+
+# - name: change the default nexus data directory
+#   template:
+#       src: nexus_data_dir_conf.j2
+#       dest: /app/nexus/bin/nexus.vmoptions
+
+
+- name: Uncomment and set run_as_user parameter
+  lineinfile:
+    path: /app/nexus/bin/nexus.vmoptions
+    regexp: '^-Dkaraf.data=../sonatype-work/nexus3$'
+    line: '-Dkaraf.data=../nexus/nexus-data'
+    state: present
+    create: yes
+
+- name: Running Nexus as a System Service
+  template:
+      src: nexus_service_conf.j2
+      dest: /etc/systemd/system/nexus.service
+
+- name: Enable services for automatic start
+  service:
+    name: nexus
+    enabled: true
+
+- name: Start service nexus, if not started
+  service:
+    name: nexus
+    state: started
